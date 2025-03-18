@@ -3,7 +3,7 @@ const Task = require('../models/Task');
 const authMiddleware = require('../middleware/authMiddleware');
 const router = express.Router();
 
-router.post('/', authMiddleware, async (req, res) => {
+router.post("/reorder", authMiddleware, async (req, res) => {
   try {
     if (!req.body.title) {
       return res.status(400).json({ message: "Task title is required" });
@@ -16,6 +16,15 @@ router.post('/', authMiddleware, async (req, res) => {
   } catch (error) {
     console.error("Error creating task:", error);
     res.status(500).json({ message: "Server error", error: error.message });
+  }
+  try {
+    const { tasks } = req.body;
+    for (let i = 0; i < tasks.length; i++) {
+      await Task.findByIdAndUpdate(tasks[i]._id, { order: i });
+    }
+    res.json({ message: "Order updated" });
+  } catch (error) {
+    res.status(500).json({ message: "Server error" });
   }
 });
 
