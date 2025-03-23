@@ -11,7 +11,7 @@ router.post("/", authMiddleware, async (req, res) => {
     }
 
     const { title, color, pinned } = req.body;
-    const task = new Task({ user: req.user.userId, title: req.body.title, color: color || "#FFFFFF", pinned: pinned || false });
+    const task = new Task({ user: req.user.userId, title: req.body.title, color, pinned: pinned || false });
     await task.save();
 
     res.status(201).json(task);
@@ -50,13 +50,11 @@ router.get("/", authMiddleware, async (req, res) => {
   }
 });
 
-router.patch("/:id/color","/:id/pin", authMiddleware, async (req, res) => {
+router.patch("/:id/pin", authMiddleware, async (req, res) => {
   try {
-    const { color } = req.body;
     const task = await Task.findById(req.params.id);
     if (!task) return res.status(404).json({ message: "Task not found" });
 
-    task.color = color;
     task.pinned = !task.pinned; // Toggle the pinned state
     await task.save();
     res.json(task);
