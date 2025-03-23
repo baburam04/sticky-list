@@ -3,12 +3,8 @@ const Task = require("../models/Task");
 const authMiddleware = require("../middleware/authMiddleware");
 const router = express.Router();
 
-<<<<<<< HEAD
-router.post("/reorder", authMiddleware, async (req, res) => {
-=======
 // ✅ FIXED: Correct endpoint for adding tasks
 router.post("/", authMiddleware, async (req, res) => {
->>>>>>> 1e3f679 (Fixed task creation and reordering routes)
   try {
     if (!req.body.title) {
       return res.status(400).json({ message: "Task title is required" });
@@ -22,32 +18,27 @@ router.post("/", authMiddleware, async (req, res) => {
     console.error("Error creating task:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
-<<<<<<< HEAD
-  try {
-    const { tasks } = req.body;
-    for (let i = 0; i < tasks.length; i++) {
-      await Task.findByIdAndUpdate(tasks[i]._id, { order: i });
-    }
-    res.json({ message: "Order updated" });
-  } catch (error) {
-    res.status(500).json({ message: "Server error" });
-  }
-=======
->>>>>>> 1e3f679 (Fixed task creation and reordering routes)
 });
 
 // ✅ FIXED: Reorder route should be separate
 router.post("/reorder", authMiddleware, async (req, res) => {
   try {
     const { tasks } = req.body;
+    if (!tasks || !Array.isArray(tasks)) {
+      return res.status(400).json({ message: "Invalid task order data" });
+    }
+
     for (let i = 0; i < tasks.length; i++) {
       await Task.findByIdAndUpdate(tasks[i]._id, { order: i });
     }
-    res.json({ message: "Order updated" });
+
+    res.json({ message: "Order updated successfully" });
   } catch (error) {
+    console.error("Error reordering tasks:", error);
     res.status(500).json({ message: "Server error" });
   }
 });
+
 
 router.get("/", authMiddleware, async (req, res) => {
   const tasks = await Task.find({ user: req.user.userId });
