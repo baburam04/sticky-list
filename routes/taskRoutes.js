@@ -10,8 +10,8 @@ router.post("/", authMiddleware, async (req, res) => {
       return res.status(400).json({ message: "Task title is required" });
     }
 
-    const { title, color } = req.body;
-    const task = new Task({ user: req.user.userId, title: req.body.title, color });
+    const { title, color, pinned } = req.body;
+    const task = new Task({ user: req.user.userId, title: req.body.title, color, pinned: pinned || false });
     await task.save();
 
     res.status(201).json(task);
@@ -43,12 +43,26 @@ router.post("/reorder", authMiddleware, async (req, res) => {
 
 router.get("/", authMiddleware, async (req, res) => {
   try {
-    const tasks = await Task.find({ user: req.user.userId });
+    const tasks = await Task.find({ user: req.user.userId }).sort({ pinned: -1, _id: -1 });
     res.json(tasks);
   } catch (error) {
     res.status(500).json({ message: "Server error" });
   }
 });
+
+router.patch("/:id/pin", authMiddleware, async (req, res) => {
+  try {
+    const task = await Task.findById(req.params.id);
+    if (!task) return res.status(404).json({ message: "Task not found" });
+
+    task.pinned = !task.pinned; // Toggle the pinned state
+    await task.save();
+    res.json(task);
+  } catch (error) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
 
 router.delete("/:id", authMiddleware, async (req, res) => {
   await Task.findByIdAndDelete(req.params.id);
