@@ -10,7 +10,8 @@ router.post("/", authMiddleware, async (req, res) => {
       return res.status(400).json({ message: "Task title is required" });
     }
 
-    const task = new Task({ user: req.user.userId, title: req.body.title });
+    const { title, color } = req.body;
+    const task = new Task({ user: req.user.userId, title: req.body.title, color });
     await task.save();
 
     res.status(201).json(task);
@@ -41,8 +42,12 @@ router.post("/reorder", authMiddleware, async (req, res) => {
 
 
 router.get("/", authMiddleware, async (req, res) => {
-  const tasks = await Task.find({ user: req.user.userId });
-  res.json(tasks);
+  try {
+    const tasks = await Task.find({ user: req.user.userId });
+    res.json(tasks);
+  } catch (error) {
+    res.status(500).json({ message: "Server error" });
+  }
 });
 
 router.delete("/:id", authMiddleware, async (req, res) => {
