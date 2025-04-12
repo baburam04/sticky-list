@@ -294,19 +294,23 @@ router.patch("/:id", authMiddleware, async (req, res) => {
 // Delete task
 router.delete("/:id", authMiddleware, async (req, res) => {
   try {
+    console.log(`Attempting to delete task ${req.params.id} for user ${req.user.userId}`);
+    
     const task = await Task.findOneAndDelete({ 
       _id: req.params.id, 
       user: req.user.userId 
     });
 
     if (!task) {
+      console.log(`Task not found: ${req.params.id}`);
       return res.status(404).json({ 
         success: false,
         message: "Task not found" 
       });
     }
 
-    res.json({
+    console.log(`Successfully deleted task: ${task._id}`);
+    res.json({ 
       success: true,
       message: "Task deleted successfully",
       deletedTaskId: task._id
@@ -323,7 +327,7 @@ router.delete("/:id", authMiddleware, async (req, res) => {
     
     res.status(500).json({ 
       success: false,
-      message: "Failed to delete task",
+      message: "Server error while deleting task", 
       error: error.message 
     });
   }
