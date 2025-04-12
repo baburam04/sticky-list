@@ -10,12 +10,13 @@ const TaskSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Checklist',
     required: true,
-    index: true  // Added index for better query performance
+    index: true
   },
   title: { 
     type: String, 
     required: [true, "Task title is required"],
-    trim: true
+    trim: true,
+    maxlength: [200, "Task title cannot exceed 200 characters"]
   },
   color: { 
     type: String, 
@@ -35,39 +36,34 @@ const TaskSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
-  order: { 
-    type: Number, 
-    default: 0,
-    min: 0
-  },
   dueDate: {
     type: Date,
     validate: {
       validator: function(v) {
         // Allow null/undefined or valid future dates
-        return !v || v > Date.now();
+        return !v || new Date(v) > new Date();
       },
       message: "Due date must be in the future"
     }
-  },
-  createdAt: { 
-    type: Date, 
-    default: Date.now 
-  },
-  updatedAt: {
-    type: Date,
-    default: Date.now
   }
 }, {
-  timestamps: true,  // Auto-manage createdAt and updatedAt
-  toJSON: { virtuals: true },
-  toObject: { virtuals: true }
+  timestamps: true,
+  toJSON: { 
+    virtuals: true,
+    transform: function(doc, ret) {
+      delete ret.__v; // Remove version key
+      return ret;
+    }
+  },
+  toObject: { 
+    virtuals: true 
+  }
 });
 
-// Compound index for better query performance on common operations
-TaskSchema.index({ checklist: 1, order: 1 });
-TaskSchema.index({ user: 1, pinned: -1, order: 1 });  // For pinned task sorting
-TaskSchema.index({ user: 1, completed: 1 });  // For completed tasks filtering
+// Improved indexes for better performance
+TaskSchema.index({ checklist: 1, pinned: -1, createdAt: -1 }); // For checklist task listing
+TaskSchema.index({ user: 1, pinned: 1, completed: 1 }); // For pinned tasks across all checklists
+TaskSchema.index({ checklist: 1, completed: 1 }); // For completed tasks within a checklist
 
 // Virtual for formatted due date
 TaskSchema.virtual('dueDateFormatted').get(function() {
@@ -75,22 +71,27 @@ TaskSchema.virtual('dueDateFormatted').get(function() {
   return this.dueDate.toISOString().split('T')[0]; // YYYY-MM-DD format
 });
 
-// Middleware to update order of other tasks when order changes
+// Pre-save hook to validate checklist exists
 TaskSchema.pre('save', async function(next) {
-  if (this.isModified('order')) {
-    try {
-      await this.model('Task').updateMany(
-        {
-          checklist: this.checklist,
-          order: { $gte: this.order },
-          _id: { $ne: this._id }
-        },
-        { $inc: { order: 1 } }
-      );
-    } catch (err) {
-      return next(err);
+  try {
+    // Verify the checklist exists and belongs to the same user
+    const checklist = await mongoose.model('Checklist').findOne({
+      _id: this.checklist,
+      user: this.user
+    });
+    
+    if (!checklist) {
+      throw new Error('Checklist not found or does not belong to user');
     }
+    next();
+  } catch (err) {
+    next(err);
   }
+});
+
+// Pre-remove hook to clean up any task references (if needed)
+TaskSchema.pre('remove', async function(next) {
+  // Add any cleanup logic here if needed
   next();
 });
 
