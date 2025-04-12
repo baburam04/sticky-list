@@ -7,97 +7,54 @@ const router = express.Router();
 // Create new task within a checklist
 router.post("/", authMiddleware, async (req, res) => {
   try {
-    if (!req.body.title || !req.body.checklistId) {
+    const { title, checklistId } = req.body;
+    
+    if (!title || !checklistId) {
       return res.status(400).json({ 
+        success: false,
         message: "Task title and checklist ID are required" 
       });
     }
 
     // Verify checklist exists and belongs to user
     const checklist = await Checklist.findOne({
-      _id: req.body.checklistId,
-      user: req.user.userId
-    });
-
-    if (!checklist) {
-      return res.status(404).json({ message: "Checklist not found" });
-    }
-
-    // Get the highest order value within this checklist
-    const highestOrderTask = await Task.findOne({ 
-      checklist: req.body.checklistId 
-    })
-      .sort({ order: -1 })
-      .limit(1);
-    
-    const order = highestOrderTask ? highestOrderTask.order + 1 : 0;
-
-    const task = new Task({
-      user: req.user.userId,
-      checklist: req.body.checklistId,
-      title: req.body.title,
-      color: req.body.color || "#FFFFFF",
-      pinned: req.body.pinned || false,
-      completed: req.body.completed || false,
-      dueDate: req.body.dueDate || null,
-      order: order
-    });
-
-    await task.save();
-    
-    // Return task with checklist reference populated
-    const populatedTask = await Task.findById(task._id)
-      .populate('checklist', 'title color');
-    
-    res.status(201).json(populatedTask);
-  } catch (error) {
-    console.error("Error creating task:", error);
-    res.status(500).json({ 
-      message: "Server error", 
-      error: error.message 
-    });
-  }
-});
-
-// Reorder tasks within a checklist
-router.patch("/reorder", authMiddleware, async (req, res) => {
-  try {
-    const { checklistId, orderedTasks } = req.body;
-    
-    if (!checklistId || !orderedTasks || !Array.isArray(orderedTasks)) {
-      return res.status(400).json({ 
-        message: "Checklist ID and ordered tasks array are required" 
-      });
-    }
-
-    // Verify checklist ownership
-    const checklist = await Checklist.findOne({
       _id: checklistId,
       user: req.user.userId
     });
 
     if (!checklist) {
-      return res.status(404).json({ message: "Checklist not found" });
+      return res.status(404).json({ 
+        success: false,
+        message: "Checklist not found" 
+      });
     }
 
-    const bulkOps = orderedTasks.map((task, index) => ({
-      updateOne: {
-        filter: { 
-          _id: task.id, 
-          user: req.user.userId,
-          checklist: checklistId
-        },
-        update: { $set: { order: index } }
+    const task = new Task({
+      user: req.user.userId,
+      checklist: checklistId,
+      title: title.trim(),
+      completed: false,
+      pinned: false
+    });
+
+    const savedTask = await task.save();
+    
+    res.status(201).json({
+      success: true,
+      task: {
+        id: savedTask._id,
+        title: savedTask.title,
+        checklistId: savedTask.checklist,
+        completed: savedTask.completed,
+        pinned: savedTask.pinned,
+        createdAt: savedTask.createdAt
       }
-    }));
-
-    await Task.bulkWrite(bulkOps);
-
-    res.json({ message: "Tasks reordered successfully" });
+    });
   } catch (error) {
-    console.error("Error reordering tasks:", error);
+    console.error("Error creating task:", error);
     res.status(500).json({ 
-      message: "Server error", 
+      success: false,
+      message: "Failed to create task",
       error: error.message 
     });
   }
@@ -113,21 +70,34 @@ router.get("/checklist/:checklistId", authMiddleware, async (req, res) => {
     });
 
     if (!checklist) {
-      return res.status(404).json({ message: "Checklist not found" });
+      return res.status(404).json({ 
+        success: false,
+        message: "Checklist not found" 
+      });
     }
 
     const tasks = await Task.find({ 
       user: req.user.userId,
       checklist: req.params.checklistId
     })
-      .sort({ pinned: -1, order: 1 })
-      .populate('checklist', 'title color');
+    .sort({ pinned: -1, createdAt: -1 }) // Pinned first, then newest first
+    .lean();
 
-    res.json(tasks);
+    res.json({
+      success: true,
+      tasks: tasks.map(t => ({
+        id: t._id,
+        title: t.title,
+        completed: t.completed,
+        pinned: t.pinned,
+        createdAt: t.createdAt
+      }))
+    });
   } catch (error) {
     console.error("Error fetching tasks:", error);
     res.status(500).json({ 
-      message: "Server error", 
+      success: false,
+      message: "Failed to fetch tasks",
       error: error.message 
     });
   }
@@ -140,14 +110,29 @@ router.get("/pinned", authMiddleware, async (req, res) => {
       user: req.user.userId,
       pinned: true
     })
-      .sort({ order: 1 })
-      .populate('checklist', 'title color');
+    .sort({ createdAt: -1 }) // Newest first
+    .populate('checklist', 'title')
+    .lean();
 
-    res.json(tasks);
+    res.json({
+      success: true,
+      tasks: tasks.map(t => ({
+        id: t._id,
+        title: t.title,
+        completed: t.completed,
+        pinned: t.pinned,
+        createdAt: t.createdAt,
+        checklist: {
+          id: t.checklist._id,
+          title: t.checklist.title
+        }
+      }))
+    });
   } catch (error) {
     console.error("Error fetching pinned tasks:", error);
     res.status(500).json({ 
-      message: "Server error", 
+      success: false,
+      message: "Failed to fetch pinned tasks",
       error: error.message 
     });
   }
@@ -156,24 +141,46 @@ router.get("/pinned", authMiddleware, async (req, res) => {
 // Toggle task completion status
 router.patch("/:id/complete", authMiddleware, async (req, res) => {
   try {
+    const { completed } = req.body;
+    
+    if (typeof completed !== 'boolean') {
+      return res.status(400).json({ 
+        success: false,
+        message: "Completed status is required and must be boolean" 
+      });
+    }
+
     const task = await Task.findOneAndUpdate(
       { 
         _id: req.params.id, 
         user: req.user.userId 
       },
-      { $set: { completed: req.body.completed } },
+      { $set: { completed } },
       { new: true }
-    ).populate('checklist', 'title color');
+    ).lean();
 
     if (!task) {
-      return res.status(404).json({ message: "Task not found" });
+      return res.status(404).json({ 
+        success: false,
+        message: "Task not found" 
+      });
     }
 
-    res.json(task);
+    res.json({
+      success: true,
+      task: {
+        id: task._id,
+        title: task.title,
+        completed: task.completed,
+        pinned: task.pinned,
+        createdAt: task.createdAt
+      }
+    });
   } catch (error) {
     console.error("Error toggling completion status:", error);
     res.status(500).json({ 
-      message: "Server error", 
+      success: false,
+      message: "Failed to update task status",
       error: error.message 
     });
   }
@@ -182,24 +189,46 @@ router.patch("/:id/complete", authMiddleware, async (req, res) => {
 // Toggle pin status
 router.patch("/:id/pin", authMiddleware, async (req, res) => {
   try {
+    const { pinned } = req.body;
+    
+    if (typeof pinned !== 'boolean') {
+      return res.status(400).json({ 
+        success: false,
+        message: "Pinned status is required and must be boolean" 
+      });
+    }
+
     const task = await Task.findOneAndUpdate(
       { 
         _id: req.params.id, 
         user: req.user.userId 
       },
-      { $set: { pinned: req.body.pinned } },
+      { $set: { pinned } },
       { new: true }
-    ).populate('checklist', 'title color');
+    ).lean();
 
     if (!task) {
-      return res.status(404).json({ message: "Task not found" });
+      return res.status(404).json({ 
+        success: false,
+        message: "Task not found" 
+      });
     }
 
-    res.json(task);
+    res.json({
+      success: true,
+      task: {
+        id: task._id,
+        title: task.title,
+        completed: task.completed,
+        pinned: task.pinned,
+        createdAt: task.createdAt
+      }
+    });
   } catch (error) {
     console.error("Error toggling pin status:", error);
     res.status(500).json({ 
-      message: "Server error", 
+      success: false,
+      message: "Failed to update pin status",
       error: error.message 
     });
   }
@@ -209,7 +238,7 @@ router.patch("/:id/pin", authMiddleware, async (req, res) => {
 router.patch("/:id", authMiddleware, async (req, res) => {
   try {
     const updates = {};
-    const validFields = ['title', 'color', 'dueDate', 'pinned', 'completed'];
+    const validFields = ['title', 'dueDate', 'pinned', 'completed'];
     
     // Only allow specific fields to be updated
     validFields.forEach(field => {
@@ -218,6 +247,13 @@ router.patch("/:id", authMiddleware, async (req, res) => {
       }
     });
 
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ 
+        success: false,
+        message: "No valid fields provided for update" 
+      });
+    }
+
     const task = await Task.findOneAndUpdate(
       { 
         _id: req.params.id, 
@@ -225,40 +261,52 @@ router.patch("/:id", authMiddleware, async (req, res) => {
       },
       { $set: updates },
       { new: true, runValidators: true }
-    ).populate('checklist', 'title color');
+    ).lean();
 
     if (!task) {
-      return res.status(404).json({ message: "Task not found" });
+      return res.status(404).json({ 
+        success: false,
+        message: "Task not found" 
+      });
     }
 
-    res.json(task);
+    res.json({
+      success: true,
+      task: {
+        id: task._id,
+        title: task.title,
+        completed: task.completed,
+        pinned: task.pinned,
+        dueDate: task.dueDate,
+        createdAt: task.createdAt
+      }
+    });
   } catch (error) {
     console.error("Error updating task:", error);
     res.status(500).json({ 
-      message: "Server error", 
+      success: false,
+      message: "Failed to update task",
       error: error.message 
     });
   }
 });
 
 // Delete task
-// Delete task
 router.delete("/:id", authMiddleware, async (req, res) => {
   try {
-    console.log(`Attempting to delete task ${req.params.id} for user ${req.user.userId}`);
-    
     const task = await Task.findOneAndDelete({ 
       _id: req.params.id, 
       user: req.user.userId 
     });
 
     if (!task) {
-      console.log(`Task not found: ${req.params.id}`);
-      return res.status(404).json({ message: "Task not found" });
+      return res.status(404).json({ 
+        success: false,
+        message: "Task not found" 
+      });
     }
 
-    console.log(`Successfully deleted task: ${task._id}`);
-    res.json({ 
+    res.json({
       success: true,
       message: "Task deleted successfully",
       deletedTaskId: task._id
@@ -266,15 +314,16 @@ router.delete("/:id", authMiddleware, async (req, res) => {
   } catch (error) {
     console.error("Error deleting task:", error);
     
-    // Handle specific MongoDB errors
     if (error.name === 'CastError') {
       return res.status(400).json({ 
+        success: false,
         message: "Invalid task ID format" 
       });
     }
     
     res.status(500).json({ 
-      message: "Server error while deleting task", 
+      success: false,
+      message: "Failed to delete task",
       error: error.message 
     });
   }
