@@ -242,25 +242,39 @@ router.patch("/:id", authMiddleware, async (req, res) => {
 });
 
 // Delete task
+// Delete task
 router.delete("/:id", authMiddleware, async (req, res) => {
   try {
+    console.log(`Attempting to delete task ${req.params.id} for user ${req.user.userId}`);
+    
     const task = await Task.findOneAndDelete({ 
       _id: req.params.id, 
       user: req.user.userId 
     });
 
     if (!task) {
+      console.log(`Task not found: ${req.params.id}`);
       return res.status(404).json({ message: "Task not found" });
     }
 
+    console.log(`Successfully deleted task: ${task._id}`);
     res.json({ 
+      success: true,
       message: "Task deleted successfully",
-      deletedTask: task
+      deletedTaskId: task._id
     });
   } catch (error) {
     console.error("Error deleting task:", error);
+    
+    // Handle specific MongoDB errors
+    if (error.name === 'CastError') {
+      return res.status(400).json({ 
+        message: "Invalid task ID format" 
+      });
+    }
+    
     res.status(500).json({ 
-      message: "Server error", 
+      message: "Server error while deleting task", 
       error: error.message 
     });
   }
