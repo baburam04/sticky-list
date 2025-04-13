@@ -1,4 +1,4 @@
-# Sticky List
+# Online To-Do List with User Authentication
 
 A Node.js-based backend application designed to manage and serve a list of items through RESTful APIs. This project utilizes Express.js for handling HTTP requests, with a structured approach separating configuration, middleware, models, and routes for scalability and maintainability.
 
