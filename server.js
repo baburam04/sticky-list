@@ -14,10 +14,7 @@ connectDB();
 const app = express();
 
 // Middleware
-app.use(cors({
-  origin: "https://7-todolist.netlify.app/", // Your frontend URL
-  credentials: true
-}));
+app.use(cors());
 app.use(express.json());
 
 // Routes
