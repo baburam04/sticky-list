@@ -17,7 +17,7 @@ router.post('/', authMiddleware, async (req, res) => {
     }
 
     const checklist = new Checklist({
-      user: req.user.userId,
+      user: req.user._id,
       title: title.trim(),
       // Color is optional, will use default from model
     });
@@ -47,7 +47,7 @@ router.post('/', authMiddleware, async (req, res) => {
 router.get('/', authMiddleware, async (req, res) => {
   try {
     // Get checklists sorted by creation date (newest first)
-    const checklists = await Checklist.find({ user: req.user.userId })
+    const checklists = await Checklist.find({ user: req.user._id })
       .sort({ createdAt: -1 })
       .lean();
 
@@ -56,7 +56,7 @@ router.get('/', authMiddleware, async (req, res) => {
       checklists.map(async (checklist) => {
         const taskCount = await Task.countDocuments({ 
           checklist: checklist._id,
-          user: req.user.userId
+          user: req.user._id
         });
         return {
           id: checklist._id,
@@ -94,7 +94,7 @@ router.get('/search', authMiddleware, async (req, res) => {
     }
 
     const checklists = await Checklist.find({
-      user: req.user.userId,
+      user: req.user._id,
       title: { $regex: query, $options: 'i' } // Case-insensitive search
     })
     .sort({ createdAt: -1 })
@@ -131,7 +131,7 @@ router.patch('/:id', authMiddleware, async (req, res) => {
     }
 
     const checklist = await Checklist.findOneAndUpdate(
-      { _id: req.params.id, user: req.user.userId },
+      { _id: req.params.id, user: req.user._id },
       { $set: { title: title.trim() } },
       { new: true, runValidators: true }
     );
@@ -167,7 +167,7 @@ router.delete('/:id', authMiddleware, async (req, res) => {
     // First delete the checklist
     const checklist = await Checklist.findOneAndDelete({ 
       _id: req.params.id, 
-      user: req.user.userId 
+      user: req.user._id
     });
 
     if (!checklist) {
@@ -180,7 +180,7 @@ router.delete('/:id', authMiddleware, async (req, res) => {
     // Then delete all associated tasks
     const result = await Task.deleteMany({ 
       checklist: req.params.id,
-      user: req.user.userId
+      user: req.user._id
     });
 
     res.json({
