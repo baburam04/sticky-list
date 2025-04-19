@@ -15,7 +15,8 @@ const app = express();
 
 // Middleware
 app.use(cors({
-  origin: "https://7-todolist.netlify.app/", // Your frontend URL
+  origin: "https://7-todolist.netlify.app", // Your frontend URL
+ // origin: "http://localhost:3000", //Dev-Frontend URL
   credentials: true
 }));
 app.use(express.json());
