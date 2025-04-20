@@ -13,6 +13,14 @@ connectDB();
 
 const app = express();
 
+app.get('/', (_req, res) => {
+  res.json({ 
+    status: 'running',
+    message: 'Sticky List API',
+    docs: 'https://sticky-list.onrender.com/api/health' 
+  });
+});
+
 // Middleware
 app.use(cors({
   origin: process.env.FRONTEND_URL || 'https://7-todolist.netlify.app',
@@ -27,7 +35,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/tasks', taskRoutes);
 
 // Error handling middleware
-app.use((err, req, res, next) => {
+app.use((err, _req, res, _next) => {
   console.error(err.stack);
   res.status(500).send('Something broke!');
 });
